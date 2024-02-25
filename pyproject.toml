@@ -1,0 +1,45 @@
+[build-system] # Require setuptool version due to https://github.com/pypa/setuptools/issues/2938
+requires = ["setuptools>=61.0.0", "wheel"]
+
+[project]
+name = "mesh_converter"
+version = "0.1.0"
+description = "Mesh converter from Exodus2 to XDMF"
+authors = [{ name = "Jørgen S. Dokken", email = "dokken@simula.no" }]
+license = { file = "LICENSE" }
+readme = "README.md"
+dependencies = ["adios2","netCDF4", "mpi4py"]
+
+[project.optional-dependencies]
+test = ["pytest", "coverage"]
+dev = ["pdbpp", "ipython", "mypy", "flake8"]
+all = []
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+testpaths = ["tests"]
+
+[tool.mypy]
+ignore_missing_imports = true
+# Folders to exclude
+exclude = ["docs/", "build/"]
+# Folder to check with mypy
+files = ["src", "tests"]
+
+
+[tool.isort]
+src_paths = ["src", "tests"]
+known_first_party = "mesh_converter"
+known_third_party = [
+    "h5py",
+    "netCDF4",
+]
+known_mpi = ["mpi4py"]
+sections = [
+    "FUTURE",
+    "STDLIB",
+    "MPI",
+    "THIRDPARTY",
+    "FIRSTPARTY",
+    "LOCALFOLDER",
+]
