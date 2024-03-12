@@ -9,6 +9,13 @@ import numpy as np
 import numpy.typing as npt
 
 
+def resolve_adios_scope(adios2):
+    return adios2.bindings if hasattr(adios2, "bindings") else adios2
+
+
+adios2 = resolve_adios_scope(adios2)
+
+
 class XDMFCellType(Enum):
     Polyvertex = 1
     Polyline = 2
