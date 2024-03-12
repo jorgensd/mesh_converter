@@ -54,7 +54,7 @@ class CellType(Enum):
 
 
 @dataclass
-class Mesh():
+class Mesh:
     geometry: npt.NDArray[np.floating]  # Mesh nodes
     topology: npt.NDArray[np.int64]  # Connectivity for cells in geometry
     cell_type: CellType  # Cell type
@@ -68,4 +68,5 @@ cell_to_facet: Dict[CellType, CellType] = {
     CellType.quad: CellType.interval,
     CellType.tetra: CellType.triangle,
     CellType.hex: CellType.quad,
-    CellType.interval: CellType.point}
+    CellType.interval: CellType.point,
+}
