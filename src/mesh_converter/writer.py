@@ -61,7 +61,9 @@ class XDMFCellType(Enum):
             raise ValueError(f"Unknown cell type: {self}")
 
 
-def define_topology(topology: npt.NDArray[np.int64], cell_type: CellType, mesh_element: ET.Element,
+def define_topology(topology: npt.NDArray[np.int64],
+                    cell_type: CellType,
+                    mesh_element: ET.Element,
                     filename: Path):
     topology_el = ET.SubElement(mesh_element, "Topology")
     topology_el.attrib["NumberOfElements"] = str(topology.shape[0])
@@ -97,29 +99,43 @@ def write_mesh(mesh: Mesh, filename: str | Path):
     it0.attrib["Format"] = "HDF"
     it0.text = str(filename.with_suffix(".h5")) + ":/Step0/Points"
 
-    # Define facet topology and geometry
-    facet_grid = ET.SubElement(domain, "Grid")
-    facet_grid.attrib["GridType"] = "Uniform"
-    facet_grid.attrib["Name"] = "Facet_Mesh"
-    define_topology(mesh.facet_topology,
-                    cell_to_facet[mesh.cell_type], facet_grid, filename)
-    facet_geometry = ET.SubElement(facet_grid, "Geometry")
-    facet_geometry.attrib["GeometryType"] = "XY" if mesh.geometry.shape[1] == 2 else "XYZ"
-    it0 = ET.SubElement(facet_geometry, "DataItem")
-    it0.attrib["Dimensions"] = f"{mesh.geometry.shape[0]} {mesh.geometry.shape[1]}"
-    it0.attrib["Format"] = "HDF"
-    it0.text = str(filename.with_suffix(".h5")) + ":/Step0/Points"
+    # Add cell values
+    if len(mesh.cell_values) > 0:
+        attrib = ET.SubElement(grid, "Attribute")
+        attrib.attrib["Name"] = "Cell markers"
+        attrib.attrib["AttributeType"] = "Scalar"
+        attrib.attrib["Center"] = "Cell"
+        it1 = ET.SubElement(attrib, "DataItem")
+        it1.attrib["Dimensions"] = f"{len(mesh.cell_values)}"
+        it1.attrib["Format"] = "HDF"
+        it1.attrib["DataType"] = "Int"
+        it1.text = str(filename.with_suffix(".h5"))+":/Step0/Cell_Markers"
 
-    # Add facet values
-    attrib = ET.SubElement(facet_grid, "Attribute")
-    attrib.attrib["Name"] = "Facet markers"
-    attrib.attrib["AttributeType"] = "Scalar"
-    attrib.attrib["Center"] = "Cell"
-    it1 = ET.SubElement(attrib, "DataItem")
-    it1.attrib["Dimensions"] = f"{len(mesh.facet_values)}"
-    it1.attrib["Format"] = "HDF"
-    it1.attrib["DataType"] = "Int"
-    it1.text = str(filename.with_suffix(".h5"))+":/Step0/Facet_Markers"
+    # Define facet topology and geometry
+    if len(mesh.facet_values) > 0:
+        facet_grid = ET.SubElement(domain, "Grid")
+        facet_grid.attrib["GridType"] = "Uniform"
+        facet_grid.attrib["Name"] = "Facet_Mesh"
+        define_topology(mesh.facet_topology,
+                        cell_to_facet[mesh.cell_type], facet_grid, filename)
+        facet_geometry = ET.SubElement(facet_grid, "Geometry")
+        facet_geometry.attrib["GeometryType"] = "XY" if mesh.geometry.shape[1] == 2 else "XYZ"
+        it0 = ET.SubElement(facet_geometry, "DataItem")
+        it0.attrib["Dimensions"] = f"{mesh.geometry.shape[0]} {mesh.geometry.shape[1]}"
+        it0.attrib["Format"] = "HDF"
+        it0.text = str(filename.with_suffix(".h5")) + ":/Step0/Points"
+
+        # Add facet values
+        attrib = ET.SubElement(facet_grid, "Attribute")
+        attrib.attrib["Name"] = "Facet markers"
+        attrib.attrib["AttributeType"] = "Scalar"
+        attrib.attrib["Center"] = "Cell"
+        it1 = ET.SubElement(attrib, "DataItem")
+        it1.attrib["Dimensions"] = f"{len(mesh.facet_values)}"
+        it1.attrib["Format"] = "HDF"
+        it1.attrib["DataType"] = "Int"
+        it1.text = str(filename.with_suffix(".h5"))+":/Step0/Facet_Markers"
+
     with open(filename, "w") as outfile:
         outfile.write(
             '<?xml version="1.0"?>\n<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
@@ -144,16 +160,27 @@ def write_mesh(mesh: Mesh, filename: str | Path):
     outfile.Put(topology_var, mesh.topology)
 
     facet_topology_var = io.DefineVariable(
-        f"Connectivity_{str(cell_to_facet[mesh.cell_type])}", mesh.facet_topology,
+        f"Connectivity_{str(cell_to_facet[mesh.cell_type])}",
+        mesh.facet_topology,
         shape=[mesh.facet_topology.shape[0], mesh.facet_topology.shape[1]],
-        start=[0, 0], count=[mesh.facet_topology.shape[0], mesh.facet_topology.shape[1]])
+        start=[0, 0],
+        count=[mesh.facet_topology.shape[0], mesh.facet_topology.shape[1]])
     outfile.Put(facet_topology_var, mesh.facet_topology)
 
-    facet_values_var = io.DefineVariable(
-        f"Facet_Markers", mesh.facet_values,
-        shape=[mesh.facet_values.shape[0]],
-        start=[0], count=[mesh.facet_values.shape[0]])
-    outfile.Put(facet_values_var, mesh.facet_values)
+    if len(mesh.cell_values) > 0:
+        cell_values_var = io.DefineVariable(
+            f"Cell_Markers", mesh.cell_values,
+            shape=[mesh.cell_values.shape[0]],
+            start=[0], count=[mesh.cell_values.shape[0]])
+        breakpoint()
+        outfile.Put(cell_values_var, mesh.cell_values)
+
+    if len(mesh.facet_values) > 0:
+        facet_values_var = io.DefineVariable(
+            f"Facet_Markers", mesh.facet_values,
+            shape=[mesh.facet_values.shape[0]],
+            start=[0], count=[mesh.facet_values.shape[0]])
+        outfile.Put(facet_values_var, mesh.facet_values)
 
     outfile.PerformPuts()
     outfile.Close()

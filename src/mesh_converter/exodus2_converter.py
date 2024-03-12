@@ -61,48 +61,80 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
     Read mesh data from an exodus2 file.
     Includes geometry, topology, cell type, and facet data.
     """
-    infile = netCDF4.Dataset(filename)
+    try:
+        infile = netCDF4.Dataset(filename)
 
-    # use page 171 of manual to extract data
-    num_nodes = infile.dimensions["num_nodes"].size
-    gdim = infile.dimensions["num_dim"].size
-    num_blocks = infile.dimensions["num_el_blk"].size
-    assert num_blocks == 1, "Currently only supports single block"
+        # use page 171 of manual to extract data
+        num_nodes = infile.dimensions["num_nodes"].size
+        gdim = infile.dimensions["num_dim"].size
+        num_blocks = infile.dimensions["num_el_blk"].size
 
-    # Get coordinates of mesh
-    coordinates = infile.variables.get("coord")
-    if coordinates is None:
-        coordinates = np.zeros((num_nodes, gdim), dtype=np.float64)
-        for i, coord in enumerate(["x", "y", "z"]):
-            coord_i = infile.variables.get(f"coord{coord}")
-            if coord_i is not None:
-                coordinates[:coord_i.size, i] = coord_i[:]
+        # Get coordinates of mesh
+        coordinates = infile.variables.get("coord")
+        if coordinates is None:
+            coordinates = np.zeros((num_nodes, gdim), dtype=np.float64)
+            for i, coord in enumerate(["x", "y", "z"]):
+                coord_i = infile.variables.get(f"coord{coord}")
+                if coord_i is not None:
+                    coordinates[:coord_i.size, i] = coord_i[:]
 
-    # Get element connectivity
-    connectivity = infile.variables.get("connect1")
-    cell_type = CellType.from_value(
-        str(ExodusCellType.from_value(connectivity.elem_type)))
-    assert connectivity is not None, "No connectivity found"
-    connectivity_array = connectivity[:] - 1
+        # Get element connectivity
+        connectivity_arrays = []
+        cell_types = []
+        num_cells_per_block = []
+        for i in range(1, num_blocks+1):
+            connectivity = infile.variables.get(f"connect{i}")
+            cell_type = CellType.from_value(
+                str(ExodusCellType.from_value(connectivity.elem_type)))
+            cell_types.append(cell_type)
+            assert connectivity is not None, "No connectivity found"
+            connectivity_arrays.append(connectivity[:] - 1)
+            num_cells_per_block.append(connectivity.shape[0])
+        for cell in cell_types:
+            assert cell_types[0] == cell, "Mixed cell types not supported"
+        cell_type = cell_types[0]
 
-    # For each facet set get the values and the corresponding node indices
-    local_facet_index = side_set_to_vertex_map[cell_type]
-    num_facet_sets = infile.dimensions["num_side_sets"].size
-    values = infile.variables.get("ss_prop1")
-    facet_indices = []
-    facet_values = []
-    for i in range(1, num_facet_sets+1):
-        value = values[i-1]
-        elements = infile.variables[f"elem_ss{i}"]
-        local_facets = infile.variables[f"side_ss{i}"]
-        for element, index in zip(elements, local_facets):
-            facet_indices.append(
-                connectivity_array[element-1, local_facet_index[index-1]])
-            facet_values.append(value)
-    sub_geometry = np.vstack(facet_indices)
-    infile.close()
+        connectivity_array = np.vstack(connectivity_arrays)
+        breakpoint()
+        # Extract cell marker values
+        cell_array = np.zeros(0, dtype=np.int64)
+        if "eb_prop1" in infile.variables.keys():
+            cell_array = np.zeros(connectivity_array.shape[0], dtype=np.int64)
+            cell_values = infile.variables["eb_prop1"][:]
+            insert_offset = np.zeros(
+                len(num_cells_per_block)+1, dtype=np.int64)
+            insert_offset[1:] = np.cumsum(num_cells_per_block)
+            for i in range(len(num_cells_per_block)):
+                cell_array[insert_offset[i]:insert_offset[i+1]] = cell_values[i]
+
+        # Extract facet values
+        local_facet_index = side_set_to_vertex_map[cell_type]
+        if "num_side_sets" not in infile.dimensions:
+            num_vertices_per_facet = len(local_facet_index[0])
+            sub_geometry = np.zeros(
+                (0, num_vertices_per_facet), dtype=np.int64)
+            facet_values = np.zeros(0, dtype=np.int64)
+        else:
+            infile.dimensions.get("num_side_sets", 0)
+            num_facet_sets = infile.dimensions["num_side_sets"].size
+            values = infile.variables.get("ss_prop1")
+            facet_indices = []
+            facet_values = []
+            for i in range(1, num_facet_sets+1):
+                value = values[i-1]
+                elements = infile.variables[f"elem_ss{i}"]
+                local_facets = infile.variables[f"side_ss{i}"]
+                for element, index in zip(elements, local_facets):
+                    facet_indices.append(
+                        connectivity_array[element-1, local_facet_index[index-1]])
+                    facet_values.append(value)
+            sub_geometry = np.vstack(facet_indices)
+    finally:
+        infile.close()
+
     return Mesh(geometry=coordinates,
                 topology=connectivity_array.astype(np.int64),
                 cell_type=cell_type,
+                cell_values=cell_array,
                 facet_topology=sub_geometry.astype(np.int64),
                 facet_values=np.asarray(facet_values))

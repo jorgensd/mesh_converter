@@ -58,6 +58,7 @@ class Mesh():
     geometry: npt.NDArray[np.floating]  # Mesh nodes
     topology: npt.NDArray[np.int64]  # Connectivity for cells in geometry
     cell_type: CellType  # Cell type
+    cell_values: npt.NDArray[np.int64]
     facet_topology: npt.NDArray[np.int64]
     facet_values: npt.NDArray[np.int64]
 
