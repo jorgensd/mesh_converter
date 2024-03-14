@@ -52,6 +52,23 @@ class CellType(Enum):
         else:
             raise ValueError(f"Unknown cell type: {self}")
 
+    @property
+    def tdim(self):
+        if self == CellType.point:
+            return 0
+        elif self == CellType.interval:
+            return 1
+        elif self == CellType.triangle:
+            return 2
+        elif self == CellType.quad:
+            return 2
+        elif self == CellType.tetra:
+            return 3
+        elif self == CellType.hex:
+            return 3
+        else:
+            raise ValueError(f"Unknown cell type: {self}")
+
 
 @dataclass
 class Mesh:

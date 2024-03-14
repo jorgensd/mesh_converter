@@ -32,6 +32,7 @@ class ExodusCellType(Enum):
     HEX = 2
     QUAD = 3
     TRIANGLE = 4
+    INTERVAL = 5
 
     @classmethod
     def from_value(cls, value: str):
@@ -47,6 +48,8 @@ class ExodusCellType(Enum):
             return cls.TETRA
         elif upper == "HEX":
             return cls.HEX
+        elif upper == "BEAM2":
+            return cls.INTERVAL
         else:
             raise ValueError(f"Unknown cell type: {value}")
 
@@ -59,6 +62,8 @@ class ExodusCellType(Enum):
             return "quad"
         elif self == ExodusCellType.TRIANGLE:
             return "triangle"
+        elif self == ExodusCellType.INTERVAL:
+            return "interval"
         else:
             raise ValueError(f"Unknown cell type: {self}")
 
@@ -87,55 +92,68 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
 
         # Get element connectivity
         connectivity_arrays = []
-        cell_types = []
-        num_cells_per_block = []
+        cell_types = np.empty(num_blocks, dtype=CellType)
+        num_cells_per_block = np.zeros(num_blocks, dtype=np.int32)
+        # Create map from topological dimension to block indices
+        tdim_to_cell_index = {0: [], 1: [], 2: [], 3: []}
         for i in range(1, num_blocks + 1):
             connectivity = infile.variables.get(f"connect{i}")
             cell_type = CellType.from_value(
                 str(ExodusCellType.from_value(connectivity.elem_type))
             )
-            cell_types.append(cell_type)
+            cell_types[i - 1] = cell_type
+            tdim_to_cell_index[cell_type.tdim].append(i - 1)
             assert connectivity is not None, "No connectivity found"
             connectivity_arrays.append(connectivity[:] - 1)
-            num_cells_per_block.append(connectivity.shape[0])
-        for cell in cell_types:
-            assert cell_types[0] == cell, "Mixed cell types not supported"
-        cell_type = cell_types[0]
+            num_cells_per_block[i - 1] = connectivity.shape[0]
+        max_dim = 0
+        for i in range(4):
+            tdim_to_cell_index[i] = np.asarray(tdim_to_cell_index[i], dtype=np.int32)
+            if len(tdim_to_cell_index[i]) > 0:
+                max_dim = i
 
-        connectivity_array = np.vstack(connectivity_arrays)
+        cell_block_indices = tdim_to_cell_index[max_dim]
+        for cell in cell_types[cell_block_indices]:
+            assert (
+                cell_types[cell_block_indices[0]] == cell
+            ), "Mixed cell types not supported"
+        cell_type = cell_types[cell_block_indices][0]
+        connectivity_array = np.vstack(
+            [connectivity_arrays[i] for i in cell_block_indices]
+        )
 
-        # Extract cell marker values
-        cell_array = np.zeros(0, dtype=np.int64)
         if "eb_prop1" in infile.variables.keys():
-            cell_array = np.zeros(connectivity_array.shape[0], dtype=np.int64)
-            cell_values = infile.variables["eb_prop1"][:]
-            insert_offset = np.zeros(len(num_cells_per_block) + 1, dtype=np.int64)
-            insert_offset[1:] = np.cumsum(num_cells_per_block)
-            for i in range(len(num_cells_per_block)):
-                cell_array[insert_offset[i] : insert_offset[i + 1]] = cell_values[i]
+            block_values = infile.variables["eb_prop1"][:]
 
-        # Extract facet values
-        local_facet_index = side_set_to_vertex_map[cell_type]
-        if "num_side_sets" not in infile.dimensions:
-            num_vertices_per_facet = len(local_facet_index[0])
-            sub_geometry = np.zeros((0, num_vertices_per_facet), dtype=np.int64)
-            facet_values = np.zeros(0, dtype=np.int64)
+            # Extract cell block values
+            cell_array = np.zeros(connectivity_array.shape[0], dtype=np.int64)
+            insert_offset = np.zeros(len(cell_block_indices) + 1, dtype=np.int64)
+            insert_offset[1:] = np.cumsum(num_cells_per_block[cell_block_indices])
+            for i, index in enumerate(cell_block_indices):
+                cell_array[insert_offset[i] : insert_offset[i + 1]] = block_values[
+                    index
+                ]
+
+            # Get all facet blocks
+            facet_blocks_indices = tdim_to_cell_index[max_dim - 1]
+            if len(facet_blocks_indices) > 0:
+                sub_geometry = np.vstack(
+                    [connectivity_arrays[i] for i in facet_blocks_indices]
+                )
+                facet_values = np.zeros(sub_geometry.shape[0], dtype=np.int64)
+                insert_offset = np.zeros(len(facet_blocks_indices) + 1, dtype=np.int64)
+                insert_offset[1:] = np.cumsum(num_cells_per_block[facet_blocks_indices])
+                for i, index in enumerate(facet_blocks_indices):
+                    facet_values[
+                        insert_offset[i] : insert_offset[i + 1]
+                    ] = block_values[index]
+            else:
+                sub_geometry = np.zeros((0, 0), dtype=np.int64)
+                facet_values = np.zeros(0, dtype=np.int64)
         else:
-            infile.dimensions.get("num_side_sets", 0)
-            num_facet_sets = infile.dimensions["num_side_sets"].size
-            values = infile.variables.get("ss_prop1")
-            facet_indices = []
-            facet_values = []
-            for i in range(1, num_facet_sets + 1):
-                value = values[i - 1]
-                elements = infile.variables[f"elem_ss{i}"]
-                local_facets = infile.variables[f"side_ss{i}"]
-                for element, index in zip(elements, local_facets):
-                    facet_indices.append(
-                        connectivity_array[element - 1, local_facet_index[index - 1]]
-                    )
-                    facet_values.append(value)
-            sub_geometry = np.vstack(facet_indices)
+            cell_array = np.zeros(0, dtype=np.int64)
+            sub_geometry = np.zeros((0, 0), dtype=np.int64)
+            facet_values = np.zeros(0, dtype=np.int64)
     finally:
         infile.close()
 
