@@ -8,7 +8,7 @@ from .mesh import Mesh, CellType
 
 # Based on: https://src.fedoraproject.org/repo/pkgs/exodusii/922137.pdf/a45d67f4a1a8762bcf66af2ec6eb35f9/922137.pdf
 tetra_facet_to_vertex_map = {0: [0, 1, 3], 1: [1, 2, 3], 2: [0, 2, 3], 3: [0, 1, 2]}
-triangle_to_vertex_map = {0: [0, 1], 1: [1, 2], 2: [2, 3]}
+triangle_to_vertex_map = {0: [0, 1], 1: [1, 2], 2: [2, 0]}
 quad_to_vertex_map = {0: [0, 1], 1: [1, 2], 2: [2, 3], 3: [3, 0]}
 hex_to_vertex_map = {
     0: [0, 1, 4, 5],
@@ -39,7 +39,7 @@ class ExodusCellType(Enum):
         Workaround for string enum prior to Python 3.11
         """
         upper = value.upper()
-        if upper == "TRIANGLE":
+        if upper == "TRI3":
             return cls.TRIANGLE
         elif upper == "QUAD":
             return cls.QUAD
