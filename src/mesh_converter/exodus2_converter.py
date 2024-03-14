@@ -130,7 +130,6 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
                 value = values[i - 1]
                 elements = infile.variables[f"elem_ss{i}"]
                 local_facets = infile.variables[f"side_ss{i}"]
-                breakpoint()
                 for element, index in zip(elements, local_facets):
                     facet_indices.append(
                         connectivity_array[element - 1, local_facet_index[index - 1]]
