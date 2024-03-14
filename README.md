@@ -1,7 +1,9 @@
-# Meshio input/output
+# A mesh converter from EXODUS 2 to XDMF
+Supports reading Facet-markers and Cell-markers from EXODUS 2 into an XDMFFile that can be read by DOLFINx.
 
-A mesh converter from EXODUS 2 to XDMF
-Supports reading Facet-markers and Cell-markers from EXODUS 2 into an XDMFFile that can be read by DOLFINx
+
+> [!IMPORTANT]  
+> Note that SideSets are not supported. If you are using Cubit, please extract the SideSet's as blocks.
 
 ## Installation
 Install the package by calling 
