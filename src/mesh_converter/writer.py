@@ -74,9 +74,7 @@ def define_topology(
     it0 = ET.SubElement(topology_el, "DataItem")
     it0.attrib["Dimensions"] = f"{topology.shape[0]} {topology.shape[1]}"
     it0.attrib["Format"] = "HDF"
-    it0.text = (
-        str(filename.with_suffix(".h5")) + f":/Step0/Connectivity_{str(cell_type)}"
-    )
+    it0.text = f"{filename.stem}.h5:/Step0/Connectivity_{str(cell_type)}"
 
 
 def write_mesh(mesh: Mesh, filename: str | Path):
@@ -99,7 +97,7 @@ def write_mesh(mesh: Mesh, filename: str | Path):
     it0 = ET.SubElement(geometry, "DataItem")
     it0.attrib["Dimensions"] = f"{mesh.geometry.shape[0]} {mesh.geometry.shape[1]}"
     it0.attrib["Format"] = "HDF"
-    it0.text = str(filename.with_suffix(".h5")) + ":/Step0/Points"
+    it0.text = f"{filename.stem}.h5:/Step0/Points"
 
     # Add cell values
     if len(mesh.cell_values) > 0:
@@ -111,7 +109,7 @@ def write_mesh(mesh: Mesh, filename: str | Path):
         it1.attrib["Dimensions"] = f"{len(mesh.cell_values)}"
         it1.attrib["Format"] = "HDF"
         it1.attrib["DataType"] = "Int"
-        it1.text = str(filename.with_suffix(".h5")) + ":/Step0/Cell_Markers"
+        it1.text = f"{filename.stem}.h5:/Step0/Cell_Markers"
 
     # Define facet topology and geometry
     if len(mesh.facet_values) > 0:
@@ -128,7 +126,7 @@ def write_mesh(mesh: Mesh, filename: str | Path):
         it0 = ET.SubElement(facet_geometry, "DataItem")
         it0.attrib["Dimensions"] = f"{mesh.geometry.shape[0]} {mesh.geometry.shape[1]}"
         it0.attrib["Format"] = "HDF"
-        it0.text = str(filename.with_suffix(".h5")) + ":/Step0/Points"
+        it0.text = f"{filename.stem}.h5:/Step0/Points"
 
         # Add facet values
         attrib = ET.SubElement(facet_grid, "Attribute")
@@ -139,7 +137,7 @@ def write_mesh(mesh: Mesh, filename: str | Path):
         it1.attrib["Dimensions"] = f"{len(mesh.facet_values)}"
         it1.attrib["Format"] = "HDF"
         it1.attrib["DataType"] = "Int"
-        it1.text = str(filename.with_suffix(".h5")) + ":/Step0/Facet_Markers"
+        it1.text = f"{filename.stem}.h5:/Step0/Facet_Markers"
 
     with open(filename, "w") as outfile:
         outfile.write('<?xml version="1.0"?>\n<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')

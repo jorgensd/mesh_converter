@@ -8,7 +8,9 @@ from .mesh import Mesh, CellType
 
 # Based on: https://src.fedoraproject.org/repo/pkgs/exodusii/922137.pdf/a45d67f4a1a8762bcf66af2ec6eb35f9/922137.pdf
 tetra_facet_to_vertex_map = {0: [0, 1, 3], 1: [1, 2, 3], 2: [0, 2, 3], 3: [0, 1, 2]}
-triangle_to_vertex_map = {0: [0, 1], 1: [1, 2], 2: [2, 0]}
+# https://coreform.com/cubit_help/appendix/element_numbering.htm
+# Note that triangular side-sets goes from 2 to 4 (with 0 base index)
+triangle_to_vertex_map = {2: [0, 1], 3: [1, 2], 4: [2, 0]}
 quad_to_vertex_map = {0: [0, 1], 1: [1, 2], 2: [2, 3], 3: [3, 0]}
 hex_to_vertex_map = {
     0: [0, 1, 4, 5],
@@ -111,7 +113,6 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
             tdim_to_cell_index[i] = np.asarray(tdim_to_cell_index[i], dtype=np.int32)
             if len(tdim_to_cell_index[i]) > 0:
                 max_dim = i
-
         cell_block_indices = tdim_to_cell_index[max_dim]
         for cell in cell_types[cell_block_indices]:
             assert (
@@ -121,7 +122,7 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
         connectivity_array = np.vstack(
             [connectivity_arrays[i] for i in cell_block_indices]
         )
-
+        # If blocks are used for facet markers
         if "eb_prop1" in infile.variables.keys():
             block_values = infile.variables["eb_prop1"][:]
 
@@ -144,24 +145,56 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
                 insert_offset = np.zeros(len(facet_blocks_indices) + 1, dtype=np.int64)
                 insert_offset[1:] = np.cumsum(num_cells_per_block[facet_blocks_indices])
                 for i, index in enumerate(facet_blocks_indices):
-                    facet_values[
-                        insert_offset[i] : insert_offset[i + 1]
-                    ] = block_values[index]
+                    facet_values[insert_offset[i] : insert_offset[i + 1]] = (
+                        block_values[index]
+                    )
+            # If sidesets are used for facet markers
+            elif "ss_prop1" in infile.variables.keys():
+                # Extract facet values
+                local_facet_index = side_set_to_vertex_map[cell_type]
+                if "num_side_sets" not in infile.dimensions:
+                    num_vertices_per_facet = len(local_facet_index[0])
+                    sub_geometry = np.zeros((0, num_vertices_per_facet), dtype=np.int64)
+                    facet_values = np.zeros(0, dtype=np.int64)
+                else:
+                    infile.dimensions.get("num_side_sets", 0)
+                    num_facet_sets = infile.dimensions["num_side_sets"].size
+                    values = infile.variables.get("ss_prop1")
+                    facet_indices = []
+                    facet_values = []
+                    for i in range(1, num_facet_sets + 1):
+                        value = values[i - 1]
+                        elements = infile.variables[f"elem_ss{i}"]
+                        local_facets = infile.variables[f"side_ss{i}"]
+                        for element, index in zip(elements, local_facets):
+                            facet_indices.append(
+                                connectivity_array[
+                                    element - 1, local_facet_index[index - 1]
+                                ]
+                            )
+                            facet_values.append(value)
+                    sub_geometry = np.vstack(facet_indices)
             else:
                 sub_geometry = np.zeros((0, 0), dtype=np.int64)
                 facet_values = np.zeros(0, dtype=np.int64)
+
+            # Remove duplicate facets
+            sub_geometry, indices = np.unique(sub_geometry, axis=0, return_index=True)
+            facet_values = np.array(facet_values)[indices]
+            if len(facet_values) > 0:
+                facet_values = np.hstack(facet_values)
+
         else:
             cell_array = np.zeros(0, dtype=np.int64)
             sub_geometry = np.zeros((0, 0), dtype=np.int64)
             facet_values = np.zeros(0, dtype=np.int64)
     finally:
         infile.close()
-
     return Mesh(
         geometry=coordinates,
         topology=connectivity_array.astype(np.int64),
         cell_type=cell_type,
         cell_values=cell_array,
         facet_topology=sub_geometry.astype(np.int64),
-        facet_values=np.asarray(facet_values),
+        facet_values=facet_values,
     )
