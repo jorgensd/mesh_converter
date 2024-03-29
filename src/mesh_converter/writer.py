@@ -69,7 +69,8 @@ def define_topology(
 ):
     topology_el = ET.SubElement(mesh_element, "Topology")
     topology_el.attrib["NumberOfElements"] = str(topology.shape[0])
-    topology_el.attrib["TopologyType"] = str(XDMFCellType.from_value(cell_type))
+    topology_el.attrib["TopologyType"] = str(
+        XDMFCellType.from_value(cell_type))
     topology_el.attrib["NodesPerElement"] = str(topology.shape[1])
     it0 = ET.SubElement(topology_el, "DataItem")
     it0.attrib["Dimensions"] = f"{topology.shape[0]} {topology.shape[1]}"
@@ -80,7 +81,7 @@ def define_topology(
 def write_mesh(mesh: Mesh, filename: str | Path):
     filename = Path(filename)
 
-    xdmf = ET.Element("XDMF")
+    xdmf = ET.Element("Xdmf")
     xdmf.attrib["Version"] = "3.0"
     xdmf.attrib["xmlns:xi"] = "http://www.w3.org/2001/XInclude"
     domain = ET.SubElement(xdmf, "Domain")
@@ -140,7 +141,8 @@ def write_mesh(mesh: Mesh, filename: str | Path):
         it1.text = f"{filename.stem}.h5:/Step0/Facet_Markers"
 
     with open(filename, "w") as outfile:
-        outfile.write('<?xml version="1.0"?>\n<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
+        outfile.write(
+            '<?xml version="1.0"?>\n<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
         outfile.write(ET.tostring(xdmf, encoding="unicode"))
 
     # Create ADIOS2 reader
