@@ -8,6 +8,7 @@ from .mesh import Mesh, CellType, cell_to_facet
 import numpy as np
 import numpy.typing as npt
 
+__all__ = ["write", "XDMFCellType"]
 
 def resolve_adios_scope(adios2):
     return adios2.bindings if hasattr(adios2, "bindings") else adios2
@@ -88,7 +89,7 @@ def define_topology(
     it0.text = f"{filename.stem}.h5:/Step0/Connectivity_{str(cell_type)}"
 
 
-def write_mesh(mesh: Mesh, filename: str | Path):
+def write(mesh: Mesh, filename: str | Path):
     filename = Path(filename)
 
     xdmf = ET.Element("Xdmf")
