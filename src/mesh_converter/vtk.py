@@ -119,4 +119,11 @@ def write(mesh: Mesh, filename: str | Path):
     # Offsets
     offsets = hdf.create_dataset("Offsets", (num_cells + 1,), dtype=np.int64)
     offsets[:] = mesh.topology_offset
+
+    # Add celldata
+    if len(mesh.cell_values) > 0:
+        cv = hdf.create_group("CellData")
+        cv.attrs["Scalars"] = ["Cell_Markers"]
+        cv.create_dataset("Cell_Markers", shape=(num_cells, ), data=mesh.cell_values)
+
     inf.close()
