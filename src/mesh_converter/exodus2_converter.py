@@ -190,11 +190,19 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
             facet_values = np.zeros(0, dtype=np.int64)
     finally:
         infile.close()
+    # Convert topology data into adjacency list
+    topology_data = connectivity_array.reshape(-1).astype(np.int32)
+    topology_offset = np.arange(connectivity_array.shape[0]+1) * connectivity_array.shape[1]
+    # Convert facet topology into adjacency list
+    facet_topology_data = sub_geometry.reshape(-1)
+    facet_topology_offset = np.arange(sub_geometry.shape[0]+1) * sub_geometry.shape[1]
     return Mesh(
         geometry=coordinates,
-        topology=connectivity_array.astype(np.int64),
-        cell_type=cell_type,
+        topology_array=topology_data,
+        topology_offset=topology_offset,
+        cell_types=[cell_type for _ in range(connectivity_array.shape[0])],
         cell_values=cell_array,
-        facet_topology=sub_geometry.astype(np.int64),
+        facet_topology_array=facet_topology_data,
+        facet_topology_offset=facet_topology_offset,
         facet_values=facet_values,
     )

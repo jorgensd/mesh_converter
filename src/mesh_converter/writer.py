@@ -61,19 +61,29 @@ class XDMFCellType(Enum):
             raise ValueError(f"Unknown cell type: {self}")
 
 
+def extract_shape(topology_offset: npt.NDArray)->tuple[int, int]:
+    """
+    Extract topology shape for single cell mesh    
+    """
+    if len(topology_offset) == 1:
+        return (0, 0)
+    num_nodes_per_cell = set(topology_offset[1:] - topology_offset[:-1])
+    assert len(num_nodes_per_cell) == 1, "Mixed meshes not supported"
+    return (len(topology_offset)-1, next(iter(num_nodes_per_cell)))
+
 def define_topology(
-    topology: npt.NDArray[np.int64],
+    topology_offset: npt.NDArray[np.int64],
     cell_type: CellType,
     mesh_element: ET.Element,
     filename: Path,
-):
+):  
+    topology_shape = extract_shape(topology_offset)
     topology_el = ET.SubElement(mesh_element, "Topology")
-    topology_el.attrib["NumberOfElements"] = str(topology.shape[0])
-    topology_el.attrib["TopologyType"] = str(
-        XDMFCellType.from_value(cell_type))
-    topology_el.attrib["NodesPerElement"] = str(topology.shape[1])
+    topology_el.attrib["NumberOfElements"] = str(topology_shape[0])
+    topology_el.attrib["TopologyType"] = str(XDMFCellType.from_value(cell_type))
+    topology_el.attrib["NodesPerElement"] = str(topology_shape[1])
     it0 = ET.SubElement(topology_el, "DataItem")
-    it0.attrib["Dimensions"] = f"{topology.shape[0]} {topology.shape[1]}"
+    it0.attrib["Dimensions"] = f"{topology_shape[0]} {topology_shape[1]}"
     it0.attrib["Format"] = "HDF"
     it0.text = f"{filename.stem}.h5:/Step0/Connectivity_{str(cell_type)}"
 
@@ -90,7 +100,8 @@ def write_mesh(mesh: Mesh, filename: str | Path):
     grid = ET.SubElement(domain, "Grid")
     grid.attrib["GridType"] = "Uniform"
     grid.attrib["Name"] = "Mesh"
-    define_topology(mesh.topology, mesh.cell_type, grid, filename)
+    assert len(set(mesh.cell_types)) == 1, "Mixed meshes not supported"
+    define_topology(mesh.topology_offset, mesh.cell_types[0], grid, filename)
 
     # Define mesh geometry
     geometry = ET.SubElement(grid, "Geometry")
@@ -118,7 +129,7 @@ def write_mesh(mesh: Mesh, filename: str | Path):
         facet_grid.attrib["GridType"] = "Uniform"
         facet_grid.attrib["Name"] = "Facet_Mesh"
         define_topology(
-            mesh.facet_topology, cell_to_facet[mesh.cell_type], facet_grid, filename
+            mesh.facet_topology_offset, cell_to_facet[mesh.cell_types[0]], facet_grid, filename
         )
         facet_geometry = ET.SubElement(facet_grid, "Geometry")
         facet_geometry.attrib["GeometryType"] = (
@@ -145,7 +156,7 @@ def write_mesh(mesh: Mesh, filename: str | Path):
             '<?xml version="1.0"?>\n<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
         outfile.write(ET.tostring(xdmf, encoding="unicode"))
 
-    # Create ADIOS2 reader
+    # Create ADIOS2 writer
     assert MPI.COMM_WORLD.size == 1, "Mesh convert only works in serial for now"
     adios = adios2.ADIOS(MPI.COMM_WORLD)
     io = adios.DeclareIO("Mesh writer")
@@ -159,24 +170,27 @@ def write_mesh(mesh: Mesh, filename: str | Path):
         count=[mesh.geometry.shape[0], mesh.geometry.shape[1]],
     )
     outfile.Put(pointvar, mesh.geometry)
-
+    top_shape = extract_shape(mesh.topology_offset)
+    top_data = mesh.topology_array.reshape(*top_shape)
     topology_var = io.DefineVariable(
-        f"Connectivity_{str(mesh.cell_type)}",
-        mesh.topology,
-        shape=[mesh.topology.shape[0], mesh.topology.shape[1]],
+        f"Connectivity_{str(mesh.cell_types[0])}",
+        top_data,
+        shape=[top_shape[0], top_shape[1]],
         start=[0, 0],
-        count=[mesh.topology.shape[0], mesh.topology.shape[1]],
+        count=[top_shape[0], top_shape[1]],
     )
-    outfile.Put(topology_var, mesh.topology)
+    outfile.Put(topology_var, top_data)
 
+    facet_top_shape = extract_shape(mesh.facet_topology_offset)
+    facet_top_data = mesh.facet_topology_array.reshape(*facet_top_shape)
     facet_topology_var = io.DefineVariable(
-        f"Connectivity_{str(cell_to_facet[mesh.cell_type])}",
-        mesh.facet_topology,
-        shape=[mesh.facet_topology.shape[0], mesh.facet_topology.shape[1]],
+        f"Connectivity_{str(cell_to_facet[mesh.cell_types[0]])}",
+        facet_top_data,
+        shape=[facet_top_shape[0], facet_top_shape[1]],
         start=[0, 0],
-        count=[mesh.facet_topology.shape[0], mesh.facet_topology.shape[1]],
+        count=[facet_top_shape[0], facet_top_shape[1]],
     )
-    outfile.Put(facet_topology_var, mesh.facet_topology)
+    outfile.Put(facet_topology_var, facet_top_data)
 
     if len(mesh.cell_values) > 0:
         cell_values_var = io.DefineVariable(
