@@ -74,7 +74,7 @@ class CellType(Enum):
 class Mesh:
     geometry: npt.NDArray[np.floating]  # Mesh nodes
     topology_array: npt.NDArray[np.int64]  # Connectivity for cells in geometry
-    topology_offset: npt.NDArray[np.int64] # Offset for each cell in topology_array
+    topology_offset: npt.NDArray[np.int64]  # Offset for each cell in topology_array
     cell_types: list[CellType]  # Cell types
     cell_values: npt.NDArray[np.int64]
     facet_topology_array: npt.NDArray[np.int64]

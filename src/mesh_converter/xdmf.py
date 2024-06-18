@@ -10,6 +10,7 @@ import numpy.typing as npt
 
 __all__ = ["write", "XDMFCellType"]
 
+
 def resolve_adios_scope(adios2):
     return adios2.bindings if hasattr(adios2, "bindings") else adios2
 
@@ -62,22 +63,23 @@ class XDMFCellType(Enum):
             raise ValueError(f"Unknown cell type: {self}")
 
 
-def extract_shape(topology_offset: npt.NDArray)->tuple[int, int]:
+def extract_shape(topology_offset: npt.NDArray) -> tuple[int, int]:
     """
-    Extract topology shape for single cell mesh    
+    Extract topology shape for single cell mesh
     """
     if len(topology_offset) == 1:
         return (0, 0)
     num_nodes_per_cell = set(topology_offset[1:] - topology_offset[:-1])
     assert len(num_nodes_per_cell) == 1, "Mixed meshes not supported"
-    return (len(topology_offset)-1, next(iter(num_nodes_per_cell)))
+    return (len(topology_offset) - 1, next(iter(num_nodes_per_cell)))
+
 
 def define_topology(
     topology_offset: npt.NDArray[np.int64],
     cell_type: CellType,
     mesh_element: ET.Element,
     filename: Path,
-):  
+):
     topology_shape = extract_shape(topology_offset)
     topology_el = ET.SubElement(mesh_element, "Topology")
     topology_el.attrib["NumberOfElements"] = str(topology_shape[0])
@@ -90,6 +92,9 @@ def define_topology(
 
 
 def write(mesh: Mesh, filename: str | Path):
+    """
+    Write mesh to XDMF format
+    """
     filename = Path(filename)
 
     xdmf = ET.Element("Xdmf")
@@ -130,7 +135,10 @@ def write(mesh: Mesh, filename: str | Path):
         facet_grid.attrib["GridType"] = "Uniform"
         facet_grid.attrib["Name"] = "Facet_Mesh"
         define_topology(
-            mesh.facet_topology_offset, cell_to_facet[mesh.cell_types[0]], facet_grid, filename
+            mesh.facet_topology_offset,
+            cell_to_facet[mesh.cell_types[0]],
+            facet_grid,
+            filename,
         )
         facet_geometry = ET.SubElement(facet_grid, "Geometry")
         facet_geometry.attrib["GeometryType"] = (
@@ -153,8 +161,7 @@ def write(mesh: Mesh, filename: str | Path):
         it1.text = f"{filename.stem}.h5:/Step0/Facet_Markers"
 
     with open(filename, "w") as outfile:
-        outfile.write(
-            '<?xml version="1.0"?>\n<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
+        outfile.write('<?xml version="1.0"?>\n<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
         outfile.write(ET.tostring(xdmf, encoding="unicode"))
 
     # Create ADIOS2 writer
@@ -170,7 +177,7 @@ def write(mesh: Mesh, filename: str | Path):
         start=[0, 0],
         count=[mesh.geometry.shape[0], mesh.geometry.shape[1]],
     )
-    outfile.Put(pointvar, mesh.geometry)
+    outfile.Put(pointvar, mesh.geometry)  # type: ignore
     top_shape = extract_shape(mesh.topology_offset)
     top_data = mesh.topology_array.reshape(*top_shape)
     topology_var = io.DefineVariable(
@@ -180,7 +187,7 @@ def write(mesh: Mesh, filename: str | Path):
         start=[0, 0],
         count=[top_shape[0], top_shape[1]],
     )
-    outfile.Put(topology_var, top_data)
+    outfile.Put(topology_var, top_data)  # type: ignore
 
     facet_top_shape = extract_shape(mesh.facet_topology_offset)
     facet_top_data = mesh.facet_topology_array.reshape(*facet_top_shape)
@@ -191,7 +198,7 @@ def write(mesh: Mesh, filename: str | Path):
         start=[0, 0],
         count=[facet_top_shape[0], facet_top_shape[1]],
     )
-    outfile.Put(facet_topology_var, facet_top_data)
+    outfile.Put(facet_topology_var, facet_top_data)  # type: ignore
 
     if len(mesh.cell_values) > 0:
         cell_values_var = io.DefineVariable(
@@ -201,7 +208,7 @@ def write(mesh: Mesh, filename: str | Path):
             start=[0],
             count=[mesh.cell_values.shape[0]],
         )
-        outfile.Put(cell_values_var, mesh.cell_values)
+        outfile.Put(cell_values_var, mesh.cell_values)  # type: ignore
 
     if len(mesh.facet_values) > 0:
         facet_values_var = io.DefineVariable(
@@ -211,8 +218,8 @@ def write(mesh: Mesh, filename: str | Path):
             start=[0],
             count=[mesh.facet_values.shape[0]],
         )
-        outfile.Put(facet_values_var, mesh.facet_values)
+        outfile.Put(facet_values_var, mesh.facet_values)  # type: ignore
 
-    outfile.PerformPuts()
-    outfile.Close()
+    outfile.PerformPuts()  # type: ignore
+    outfile.Close()  # type: ignore
     assert adios.RemoveIO("Mesh writer")
