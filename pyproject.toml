@@ -8,7 +8,7 @@ description = "Mesh converter from Exodus2 to XDMF"
 authors = [{ name = "Jørgen S. Dokken", email = "dokken@simula.no" }]
 license = { file = "LICENSE" }
 readme = "README.md"
-dependencies = ["adios2","netCDF4", "mpi4py"]
+dependencies = ["adios2", "netCDF4", "mpi4py", "h5py"]
 
 [project.optional-dependencies]
 test = ["pytest", "coverage"]
@@ -30,10 +30,7 @@ files = ["src", "tests"]
 [tool.isort]
 src_paths = ["src", "tests"]
 known_first_party = "mesh_converter"
-known_third_party = [
-    "h5py",
-    "netCDF4",
-]
+known_third_party = ["h5py", "netCDF4"]
 known_mpi = ["mpi4py"]
 sections = [
     "FUTURE",
