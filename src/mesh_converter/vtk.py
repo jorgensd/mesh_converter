@@ -43,17 +43,17 @@ class VTKCellType(Enum):
 
     def __str__(self) -> str:
         if self == VTKCellType.line:
-            return "Polyline"
+            return "line"
         elif self == VTKCellType.triangle:
-            return "Triangle"
+            return "triangle"
         elif self == VTKCellType.quadrilateral:
-            return "Quadrilateral"
+            return "quadrilateral"
         elif self == VTKCellType.tetrahedron:
-            return "Tetrahedron"
+            return "tetrahedron"
         elif self == VTKCellType.hexahedron:
-            return "Hexahedron"
+            return "hexahedron"
         elif self == VTKCellType.vertex:
-            return "Polyvertex"
+            return "vertex"
         else:
             raise ValueError(f"Unknown cell type: {self}")
 
