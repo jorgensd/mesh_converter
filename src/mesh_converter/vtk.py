@@ -1,5 +1,4 @@
 from pathlib import Path
-from mpi4py import MPI
 import h5py
 import numpy as np
 from mesh_converter import Mesh, CellType
@@ -65,23 +64,29 @@ def write(mesh: Mesh, filename: str | Path):
     """
     Write mesh to VTK HDF5 format
     """
-    comm = MPI.COMM_WORLD
-    assert comm.size == 1, "Only serial writing supported"
-    fname = Path(filename).with_suffix(".vtkhdf")
-    inf = h5py.File(fname, "w", driver="mpio", comm=comm)
+    try:
+        from mpi4py import MPI
 
-    metadata = inf.create_group(np.string_("Metadata"))
+        comm = MPI.COMM_WORLD
+        assert comm.size == 1, "Only serial writing supported"
+        fname = Path(filename).with_suffix(".vtkhdf")
+        inf = h5py.File(fname, "w", driver="mpio", comm=comm)
+    except ImportError:
+        inf = h5py.File(filename, "w")
+    except ValueError:
+        inf = h5py.File(filename, "w")
+    metadata = inf.create_group(np.bytes_("Metadata"))
     metadata.attrs["gdim"] = mesh.geometry.shape[1]
-    hdf = inf.create_group(np.string_("VTKHDF"))
+    hdf = inf.create_group(np.bytes_("VTKHDF"))
     h5py.string_dtype(encoding="ascii")
     hdf.attrs["Version"] = [2, 2]
-    hdf.attrs["Type"] = np.string_("UnstructuredGrid")
+    hdf.attrs["Type"] = np.bytes_("UnstructuredGrid")
     global_shape = mesh.geometry.shape
     gdtype = mesh.geometry.dtype
 
     padded_geometry = np.zeros((global_shape[0], 3), dtype=gdtype)
     padded_geometry[:, : global_shape[1]] = mesh.geometry
-    p_string = np.string_("Points")
+    p_string = np.bytes_("Points")
     geom_set = hdf.create_dataset(p_string, padded_geometry.shape, dtype=gdtype)
     geom_set[:, :] = padded_geometry
 
@@ -124,6 +129,6 @@ def write(mesh: Mesh, filename: str | Path):
     if len(mesh.cell_values) > 0:
         cv = hdf.create_group("CellData")
         cv.attrs["Scalars"] = ["Cell_Markers"]
-        cv.create_dataset("Cell_Markers", shape=(num_cells, ), data=mesh.cell_values)
+        cv.create_dataset("Cell_Markers", shape=(num_cells,), data=mesh.cell_values)
 
     inf.close()

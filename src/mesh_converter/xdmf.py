@@ -1,5 +1,4 @@
-from mpi4py import MPI
-
+from __future__ import annotations
 import adios2
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -7,6 +6,11 @@ from enum import Enum
 from .mesh import Mesh, CellType, cell_to_facet
 import numpy as np
 import numpy.typing as npt
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import h5py
 
 __all__ = ["write", "XDMFCellType"]
 
@@ -91,6 +95,87 @@ def define_topology(
     it0.text = f"{filename.stem}.h5:/Step0/Connectivity_{str(cell_type)}"
 
 
+def write_mesh_data_adios2(mesh: Mesh, io: adios2.IO, outfile: adios2.Engine):
+    """
+    Write mesh data to ADIOS2 file
+
+    :param mesh: The mesh
+    :param io: The IO instance
+    :param outfile: The outfile instance
+    """
+    pointvar = io.DefineVariable(
+        "Points",
+        mesh.geometry,
+        shape=[mesh.geometry.shape[0], mesh.geometry.shape[1]],
+        start=[0, 0],
+        count=[mesh.geometry.shape[0], mesh.geometry.shape[1]],
+    )
+    outfile.Put(pointvar, mesh.geometry)  # type: ignore
+    top_shape = extract_shape(mesh.topology_offset)
+    top_data = mesh.topology_array.reshape(*top_shape)
+    topology_var = io.DefineVariable(
+        f"Connectivity_{str(mesh.cell_types[0])}",
+        top_data,
+        shape=[top_shape[0], top_shape[1]],
+        start=[0, 0],
+        count=[top_shape[0], top_shape[1]],
+    )
+    outfile.Put(topology_var, top_data)  # type: ignore
+
+    facet_top_shape = extract_shape(mesh.facet_topology_offset)
+    facet_top_data = mesh.facet_topology_array.reshape(*facet_top_shape)
+    facet_topology_var = io.DefineVariable(
+        f"Connectivity_{str(cell_to_facet[mesh.cell_types[0]])}",
+        facet_top_data,
+        shape=[facet_top_shape[0], facet_top_shape[1]],
+        start=[0, 0],
+        count=[facet_top_shape[0], facet_top_shape[1]],
+    )
+    outfile.Put(facet_topology_var, facet_top_data)  # type: ignore
+
+    if len(mesh.cell_values) > 0:
+        cell_values_var = io.DefineVariable(
+            "Cell_Markers",
+            mesh.cell_values,
+            shape=[mesh.cell_values.shape[0]],
+            start=[0],
+            count=[mesh.cell_values.shape[0]],
+        )
+        outfile.Put(cell_values_var, mesh.cell_values)  # type: ignore
+
+    if len(mesh.facet_values) > 0:
+        facet_values_var = io.DefineVariable(
+            "Facet_Markers",
+            mesh.facet_values,
+            shape=[mesh.facet_values.shape[0]],
+            start=[0],
+            count=[mesh.facet_values.shape[0]],
+        )
+        outfile.Put(facet_values_var, mesh.facet_values)  # type: ignore
+
+
+def write_mesh_data_h5py(mesh: Mesh, outfile: h5py.File):
+    """Write mesh data using h5py
+
+    :param mesh: Mesh to write to file
+    :param outfile: H5py file object
+    """
+    step = outfile.create_group(np.bytes_("Step0"))
+    step.create_dataset("Points", data=mesh.geometry)
+    top_shape = extract_shape(mesh.topology_offset)
+    top_data = mesh.topology_array.reshape(*top_shape)
+    step.create_dataset(f"Connectivity_{str(mesh.cell_types[0])}", data=top_data)
+    facet_top_shape = extract_shape(mesh.facet_topology_offset)
+    facet_top_data = mesh.facet_topology_array.reshape(*facet_top_shape)
+    step.create_dataset(
+        f"Connectivity_{str(cell_to_facet[mesh.cell_types[0]])}", data=facet_top_data
+    )
+    if len(mesh.cell_values) > 0:
+        step.create_dataset("Cell_Markers", data=mesh.cell_values)
+    if len(mesh.facet_values) > 0:
+        step.create_dataset("Facet_Markers", data=mesh.facet_values)
+
+
 def write(mesh: Mesh, filename: str | Path):
     """
     Write mesh to XDMF format
@@ -165,61 +250,45 @@ def write(mesh: Mesh, filename: str | Path):
         outfile.write(ET.tostring(xdmf, encoding="unicode"))
 
     # Create ADIOS2 writer
-    assert MPI.COMM_WORLD.size == 1, "Mesh convert only works in serial for now"
-    adios = adios2.ADIOS(MPI.COMM_WORLD)
+    try:
+        from mpi4py import MPI
+
+        assert MPI.COMM_WORLD.size == 1, "Mesh convert only works in serial for now"
+        adios = adios2.ADIOS(MPI.COMM_WORLD)
+    except ImportError:
+        adios = adios2.ADIOS()
+    except TypeError:
+        adios = adios2.ADIOS()
+
     io = adios.DeclareIO("Mesh writer")
     io.SetEngine("HDF5")
-    outfile = io.Open(str(filename.with_suffix(".h5")), adios2.Mode.Write)
-    pointvar = io.DefineVariable(
-        "Points",
-        mesh.geometry,
-        shape=[mesh.geometry.shape[0], mesh.geometry.shape[1]],
-        start=[0, 0],
-        count=[mesh.geometry.shape[0], mesh.geometry.shape[1]],
-    )
-    outfile.Put(pointvar, mesh.geometry)  # type: ignore
-    top_shape = extract_shape(mesh.topology_offset)
-    top_data = mesh.topology_array.reshape(*top_shape)
-    topology_var = io.DefineVariable(
-        f"Connectivity_{str(mesh.cell_types[0])}",
-        top_data,
-        shape=[top_shape[0], top_shape[1]],
-        start=[0, 0],
-        count=[top_shape[0], top_shape[1]],
-    )
-    outfile.Put(topology_var, top_data)  # type: ignore
+    fname = Path(filename).with_suffix(".h5")
+    try:
+        outfile = io.Open(str(fname), adios2.Mode.Write)
+        write_mesh_data_adios2(mesh, io, outfile)
+        outfile.PerformPuts()  # type: ignore
+        outfile.Close()  # type: ignore
+        assert adios.RemoveIO("Mesh writer")
 
-    facet_top_shape = extract_shape(mesh.facet_topology_offset)
-    facet_top_data = mesh.facet_topology_array.reshape(*facet_top_shape)
-    facet_topology_var = io.DefineVariable(
-        f"Connectivity_{str(cell_to_facet[mesh.cell_types[0]])}",
-        facet_top_data,
-        shape=[facet_top_shape[0], facet_top_shape[1]],
-        start=[0, 0],
-        count=[facet_top_shape[0], facet_top_shape[1]],
-    )
-    outfile.Put(facet_topology_var, facet_top_data)  # type: ignore
+    except ValueError:
+        # Fallback to h5py
 
-    if len(mesh.cell_values) > 0:
-        cell_values_var = io.DefineVariable(
-            "Cell_Markers",
-            mesh.cell_values,
-            shape=[mesh.cell_values.shape[0]],
-            start=[0],
-            count=[mesh.cell_values.shape[0]],
-        )
-        outfile.Put(cell_values_var, mesh.cell_values)  # type: ignore
+        try:
+            import h5py
+        except ImportError:
+            raise ValueError(
+                "ADIOS2 with HDF5 support and h5py not available, cannot write mesh"
+            )
+        try:
+            from mpi4py import MPI
 
-    if len(mesh.facet_values) > 0:
-        facet_values_var = io.DefineVariable(
-            "Facet_Markers",
-            mesh.facet_values,
-            shape=[mesh.facet_values.shape[0]],
-            start=[0],
-            count=[mesh.facet_values.shape[0]],
-        )
-        outfile.Put(facet_values_var, mesh.facet_values)  # type: ignore
+            comm = MPI.COMM_WORLD
+            assert comm.size == 1, "Only serial writing supported"
+            inf = h5py.File(fname, "w", driver="mpio", comm=comm)
+        except ImportError:
+            inf = h5py.File(fname, "w")
+        except ValueError:
+            inf = h5py.File(fname, "w")
 
-    outfile.PerformPuts()  # type: ignore
-    outfile.Close()  # type: ignore
-    assert adios.RemoveIO("Mesh writer")
+        write_mesh_data_h5py(mesh, inf)
+        inf.close()
