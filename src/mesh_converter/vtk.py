@@ -66,6 +66,7 @@ def write(mesh: Mesh, filename: str | Path):
     """
     try:
         from mpi4py import MPI
+
         comm = MPI.COMM_WORLD
         assert comm.size == 1, "Only serial writing supported"
         fname = Path(filename).with_suffix(".vtkhdf")
@@ -128,6 +129,6 @@ def write(mesh: Mesh, filename: str | Path):
     if len(mesh.cell_values) > 0:
         cv = hdf.create_group("CellData")
         cv.attrs["Scalars"] = ["Cell_Markers"]
-        cv.create_dataset("Cell_Markers", shape=(num_cells, ), data=mesh.cell_values)
+        cv.create_dataset("Cell_Markers", shape=(num_cells,), data=mesh.cell_values)
 
     inf.close()

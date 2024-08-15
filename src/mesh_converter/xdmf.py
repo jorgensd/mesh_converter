@@ -8,6 +8,7 @@ import numpy as np
 import numpy.typing as npt
 
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     import h5py
 
@@ -152,6 +153,7 @@ def write_mesh_data_adios2(mesh: Mesh, io: adios2.IO, outfile: adios2.Engine):
         )
         outfile.Put(facet_values_var, mesh.facet_values)  # type: ignore
 
+
 def write_mesh_data_h5py(mesh: Mesh, outfile: h5py.File):
     """Write mesh data using h5py
 
@@ -165,11 +167,14 @@ def write_mesh_data_h5py(mesh: Mesh, outfile: h5py.File):
     step.create_dataset(f"Connectivity_{str(mesh.cell_types[0])}", data=top_data)
     facet_top_shape = extract_shape(mesh.facet_topology_offset)
     facet_top_data = mesh.facet_topology_array.reshape(*facet_top_shape)
-    step.create_dataset(f"Connectivity_{str(cell_to_facet[mesh.cell_types[0]])}", data=facet_top_data)
+    step.create_dataset(
+        f"Connectivity_{str(cell_to_facet[mesh.cell_types[0]])}", data=facet_top_data
+    )
     if len(mesh.cell_values) > 0:
         step.create_dataset("Cell_Markers", data=mesh.cell_values)
     if len(mesh.facet_values) > 0:
         step.create_dataset("Facet_Markers", data=mesh.facet_values)
+
 
 def write(mesh: Mesh, filename: str | Path):
     """
@@ -247,6 +252,7 @@ def write(mesh: Mesh, filename: str | Path):
     # Create ADIOS2 writer
     try:
         from mpi4py import MPI
+
         assert MPI.COMM_WORLD.size == 1, "Mesh convert only works in serial for now"
         adios = adios2.ADIOS(MPI.COMM_WORLD)
     except ImportError:
@@ -257,7 +263,7 @@ def write(mesh: Mesh, filename: str | Path):
     io = adios.DeclareIO("Mesh writer")
     io.SetEngine("HDF5")
     fname = Path(filename).with_suffix(".h5")
-    try:    
+    try:
         outfile = io.Open(str(fname), adios2.Mode.Write)
         write_mesh_data_adios2(mesh, io, outfile)
         outfile.PerformPuts()  # type: ignore
@@ -270,9 +276,12 @@ def write(mesh: Mesh, filename: str | Path):
         try:
             import h5py
         except ImportError:
-            raise ValueError("ADIOS2 with HDF5 support and h5py not available, cannot write mesh")
+            raise ValueError(
+                "ADIOS2 with HDF5 support and h5py not available, cannot write mesh"
+            )
         try:
             from mpi4py import MPI
+
             comm = MPI.COMM_WORLD
             assert comm.size == 1, "Only serial writing supported"
             inf = h5py.File(fname, "w", driver="mpio", comm=comm)

@@ -192,10 +192,12 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
         infile.close()
     # Convert topology data into adjacency list
     topology_data = connectivity_array.reshape(-1).astype(np.int32)
-    topology_offset = np.arange(connectivity_array.shape[0]+1) * connectivity_array.shape[1]
+    topology_offset = (
+        np.arange(connectivity_array.shape[0] + 1) * connectivity_array.shape[1]
+    )
     # Convert facet topology into adjacency list
     facet_topology_data = sub_geometry.reshape(-1)
-    facet_topology_offset = np.arange(sub_geometry.shape[0]+1) * sub_geometry.shape[1]
+    facet_topology_offset = np.arange(sub_geometry.shape[0] + 1) * sub_geometry.shape[1]
     return Mesh(
         geometry=coordinates,
         topology_array=topology_data,
