@@ -30,8 +30,14 @@ python3 -m pip install -e . --no-deps
 ## Example
 
 ```python
-from mesh_converter import read_exodus2_data, write_mesh
+from mesh_converter import read_exodus2_data, xdmf
 
 in_mesh = read_exodus2_data("test_mesh_2_vols_blocks_and_sidesets.e")
-write_mesh(in_mesh, "out_mesh2.xdmf")
+xdmf.write(in_mesh, "out_mesh2.xdmf")
+```
+
+or using the command line interface:
+
+```bash
+mesh-converter -i input.e -o output.xdmf
 ```

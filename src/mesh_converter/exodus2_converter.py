@@ -48,7 +48,7 @@ class ExodusCellType(Enum):
             return cls.QUAD
         elif upper == "TETRA":
             return cls.TETRA
-        elif upper == "HEX":
+        elif upper in ["HEX", "HEX8"]:
             return cls.HEX
         elif upper == "BEAM2":
             return cls.INTERVAL
@@ -100,6 +100,7 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
         tdim_to_cell_index = {0: [], 1: [], 2: [], 3: []}
         for i in range(1, num_blocks + 1):
             connectivity = infile.variables.get(f"connect{i}")
+
             cell_type = CellType.from_value(
                 str(ExodusCellType.from_value(connectivity.elem_type))
             )
@@ -115,9 +116,9 @@ def read_exodus2_data(filename: str | Path) -> Mesh:
                 max_dim = i
         cell_block_indices = tdim_to_cell_index[max_dim]
         for cell in cell_types[cell_block_indices]:
-            assert (
-                cell_types[cell_block_indices[0]] == cell
-            ), "Mixed cell types not supported"
+            assert cell_types[cell_block_indices[0]] == cell, (
+                "Mixed cell types not supported"
+            )
         cell_type = cell_types[cell_block_indices][0]
         connectivity_array = np.vstack(
             [connectivity_arrays[i] for i in cell_block_indices]
